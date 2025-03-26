@@ -1,0 +1,277 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <title>Progressive Speed Metronome</title>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/tone/14.8.37/Tone.js"></script>
+    <style>
+        body {
+            font-family: Arial, sans-serif;
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            height: 100vh;
+            margin: 0;
+            background-color: #f0f0f0;
+        }
+        .metronome-container {
+            background-color: white;
+            padding: 30px;
+            border-radius: 10px;
+            box-shadow: 0 4px 6px rgba(0,0,0,0.1);
+            text-align: center;
+        }
+        input, button, select {
+            margin: 10px;
+            padding: 10px;
+        }
+        .controls {
+            display: flex;
+            justify-content: center;
+            gap: 10px;
+        }
+    </style>
+</head>
+<body>
+    <div class="metronome-container">
+        <h1>Progressive Speed Metronome</h1>
+        <div>
+            <label>Starting BPM: <input type="number" id="startBpm" value="60" min="40" max="240"></label>
+        </div>
+        <div>
+            <label>Target BPM: <input type="number" id="targetBpm" value="120" min="40" max="240"></label>
+        </div>
+        <div>
+            <label>Duration per BPM (seconds): <input type="number" id="duration" value="30" min="5" max="300"></label>
+        </div>
+        <div>
+            <label>BPM Increment: <input type="number" id="increment" value="5" min="1" max="20"></label>
+        </div>
+        <div>
+            <label>Time Signature: 
+                <select id="timeSignature">
+                    <option value="4">4/4</option>
+                    <option value="3">3/4</option>
+                    <option value="2">2/4</option>
+                </select>
+            </label>
+        </div>
+        <div class="controls">
+            <button id="startBtn">Start</button>
+            <button id="pauseBtn" disabled>Pause</button>
+            <button id="resetBtn" disabled>Reset</button>
+        </div>
+        <div id="status"></div>
+    </div>
+
+    <script>
+        class ProgressiveMetronome {
+            constructor(startBpm, targetBpm, duration, increment, timeSignature) {
+                this.startBpm = startBpm;
+                this.targetBpm = targetBpm;
+                this.duration = duration;
+                this.increment = increment;
+                this.timeSignature = timeSignature;
+                
+                this.currentBpm = startBpm;
+                this.currentBeat = 0;
+                this.isRunning = false;
+                this.isPaused = false;
+                this.remainingTime = duration;
+
+                // Create two different synths for accent and regular beats
+                this.accentSynth = new Tone.Player({
+                    url: "https://tonejs.github.io/audio/drum-samples/CR78/snare.mp3",
+                    autostart: false,
+                    volume: -6
+                }).toDestination();
+
+                this.regularSynth = new Tone.Player({
+                    url: "https://tonejs.github.io/audio/drum-samples/CR78/kick.mp3",
+                    autostart: false,
+                    volume: -8
+                }).toDestination();
+
+                this.startBtn = document.getElementById('startBtn');
+                this.pauseBtn = document.getElementById('pauseBtn');
+                this.resetBtn = document.getElementById('resetBtn');
+                this.statusDisplay = document.getElementById('status');
+
+                // Scheduler and beat loop
+                this.beatLoop = null;
+                this.bpmTimer = null;
+                this.nextBpmChange = null;
+            }
+
+            start() {
+                // If paused, resume instead of starting new
+                if (this.isPaused) {
+                    this.resume();
+                    return;
+                }
+                
+                if (this.isRunning) return;
+                
+                // Reset if previously finished
+                if (this.currentBpm > this.targetBpm) {
+                    this.reset();
+                }
+
+                this.isRunning = true;
+                this.isPaused = false;
+                this.currentBeat = 0;
+                this.startBtn.disabled = true;
+                this.pauseBtn.disabled = false;
+                this.resetBtn.disabled = false;
+                
+                // Set initial BPM
+                Tone.Transport.bpm.value = this.currentBpm;
+                this.updateStatus(`Starting at ${this.currentBpm} BPM`);
+                
+                // Schedule the metronome beats
+                this.beatLoop = new Tone.Loop((time) => {
+                    // Accent the first beat of each measure
+                    if (this.currentBeat % this.timeSignature === 0) {
+                        this.accentSynth.start(time);
+                    } else {
+                        this.regularSynth.start(time);
+                    }
+                    
+                    this.currentBeat++;
+                    
+                    // Check if it's time for a BPM change
+                    if (this.nextBpmChange && Tone.Transport.seconds >= this.nextBpmChange) {
+                        this.increaseBpm();
+                    }
+                }, "4n").start(0);
+                
+                // Schedule the first BPM change
+                this.nextBpmChange = Tone.Transport.seconds + this.duration;
+                
+                // Start the transport
+                Tone.Transport.start();
+            }
+            
+            resume() {
+                if (!this.isPaused) return;
+                
+                this.isPaused = false;
+                this.isRunning = true;
+                this.startBtn.disabled = true;
+                this.pauseBtn.disabled = false;
+                
+                // Resume the transport
+                Tone.Transport.start();
+                this.updateStatus(`Resumed at ${this.currentBpm} BPM`);
+            }
+
+            increaseBpm() {
+                this.currentBpm += this.increment;
+                
+                if (this.currentBpm <= this.targetBpm) {
+                    // Smoothly ramp to the new BPM over 0.1 seconds
+                    Tone.Transport.bpm.rampTo(this.currentBpm, 0.1);
+                    this.updateStatus(`Increasing to ${this.currentBpm} BPM`);
+                    
+                    // Schedule the next BPM change
+                    this.nextBpmChange = Tone.Transport.seconds + this.duration;
+                } else {
+                    // Instead of stopping, set to target BPM and continue
+                    this.currentBpm = this.targetBpm;
+                    Tone.Transport.bpm.rampTo(this.currentBpm, 0.1);
+                    this.updateStatus(`Target reached: ${this.currentBpm} BPM - Continuing`);
+                    
+                    // Clear the next BPM change since we've reached the target
+                    this.nextBpmChange = null;
+                }
+            }
+
+            pause() {
+                if (!this.isRunning || this.isPaused) return;
+                
+                this.isPaused = true;
+                Tone.Transport.pause();
+                this.updateStatus('Metronome Paused');
+                
+                this.startBtn.disabled = false;
+                this.pauseBtn.disabled = true;
+            }
+
+            reset() {
+                // Stop everything
+                Tone.Transport.stop();
+                if (this.beatLoop) {
+                    this.beatLoop.dispose();
+                    this.beatLoop = null;
+                }
+
+                this.isRunning = false;
+                this.isPaused = false;
+                this.currentBpm = this.startBpm;
+                this.currentBeat = 0;
+                this.nextBpmChange = null;
+
+                this.startBtn.disabled = false;
+                this.pauseBtn.disabled = true;
+                this.resetBtn.disabled = true;
+
+                this.updateStatus('Metronome Reset');
+            }
+
+            stop() {
+                if (this.beatLoop) {
+                    this.beatLoop.dispose();
+                    this.beatLoop = null;
+                }
+                Tone.Transport.stop();
+                this.isRunning = false;
+                this.updateStatus('Metronome Completed');
+                
+                this.startBtn.disabled = false;
+                this.pauseBtn.disabled = true;
+                this.resetBtn.disabled = false;
+            }
+
+            updateStatus(message) {
+                this.statusDisplay.textContent = message;
+            }
+        }
+
+        let metronome;
+
+        document.getElementById('startBtn').addEventListener('click', () => {
+            // If metronome exists and is paused, resume it instead of creating a new one
+            if (metronome && metronome.isPaused) {
+                metronome.start(); // This will call resume() internally
+                return;
+            }
+            
+            // Otherwise create a new metronome
+            const startBpm = parseInt(document.getElementById('startBpm').value);
+            const targetBpm = parseInt(document.getElementById('targetBpm').value);
+            const duration = parseInt(document.getElementById('duration').value);
+            const increment = parseInt(document.getElementById('increment').value);
+            const timeSignature = parseInt(document.getElementById('timeSignature').value);
+
+            // Dispose of any existing metronome before creating a new one
+            if (metronome) {
+                metronome.reset();
+            }
+            
+            metronome = new ProgressiveMetronome(startBpm, targetBpm, duration, increment, timeSignature);
+            
+            Tone.start().then(() => {
+                metronome.start();
+            });
+        });
+
+        document.getElementById('pauseBtn').addEventListener('click', () => {
+            if (metronome) metronome.pause();
+        });
+
+        document.getElementById('resetBtn').addEventListener('click', () => {
+            if (metronome) metronome.reset();
+        });
+    </script>
+</body>
+</html>
