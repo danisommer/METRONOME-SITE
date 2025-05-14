@@ -159,8 +159,18 @@
             </div>
         </div>
         
-        <!-- Move control buttons inside the main container -->
-        <div class="flex justify-center space-x-4 mt-6 pt-4 border-t border-gray-200">
+        <!-- Status display -->
+        <div id="status" class="text-center text-gray-600 mt-4 h-6"></div>
+        
+        <!-- Beat Visualization -->
+        <div class="mt-6">
+            <div id="beatVisualizer" class="flex justify-center space-x-3">
+                <!-- Bars will be generated dynamically based on time signature -->
+            </div>
+        </div>
+        
+        <!-- Move control buttons to the bottom -->
+        <div class="flex justify-center space-x-4 mt-8 pt-6 border-t border-gray-200">
             <button id="startBtn" 
                 class="bg-blue-500 text-white px-6 py-2 rounded-full hover:bg-blue-600 transition-colors focus:outline-none focus:ring-2 focus:ring-blue-500 focus:ring-opacity-50">
                 Start
@@ -173,23 +183,6 @@
                 class="bg-red-500 text-white px-6 py-2 rounded-full hover:bg-red-600 transition-colors focus:outline-none focus:ring-2 focus:ring-red-500 focus:ring-opacity-50 disabled:opacity-50 disabled:cursor-not-allowed">
                 Reset
             </button>
-        </div>
-
-        <div id="status" class="text-center text-gray-600 mt-4 h-6"></div>
-        
-        <!-- Visual BPM Representation -->
-        <div class="mt-6">
-            <div class="w-full bg-gray-200 rounded-full h-2.5">
-                <div id="bpmVisualProgress" class="bg-blue-500 h-2.5 rounded-full" style="width: 0%"></div>
-            </div>
-            <div class="flex justify-between text-xs text-gray-500 mt-1">
-                <span id="minBpmLabel">40</span>
-                <span id="currentBpmLabel" class="font-medium text-blue-600">-</span>
-                <span id="maxBpmLabel">480</span>
-            </div>
-            <div id="beatVisualizer" class="mt-4 flex justify-center space-x-3">
-                <!-- Bars will be generated dynamically based on time signature -->
-            </div>
         </div>
     </div>
 
@@ -431,21 +424,6 @@
 
             updateStatus(message) {
                 this.statusDisplay.textContent = message;
-                
-                // Update visual BPM display
-                const bpmProgress = document.getElementById('bpmVisualProgress');
-                const currentBpmLabel = document.getElementById('currentBpmLabel');
-                
-                // Update progress bar
-                const minBpm = parseInt(document.getElementById('startBpm').min);
-                const maxBpm = parseInt(document.getElementById('targetBpm').max);
-                const progressPercent = ((this.currentBpm - minBpm) / (maxBpm - minBpm)) * 100;
-                bpmProgress.style.width = `${progressPercent}%`;
-                
-                // Update current BPM label
-                currentBpmLabel.textContent = `${this.currentBpm} BPM`;
-                
-                // The old animation code for beatIndicator can be removed
             }
 
             // Add this new method to create beat bars
@@ -680,10 +658,6 @@
             }
         });
         
-        // Initialize BPM visualization labels
-        document.getElementById('minBpmLabel').textContent = document.getElementById('startBpm').min;
-        document.getElementById('maxBpmLabel').textContent = document.getElementById('targetBpm').max;
-
         // Adicione o event listener para o toggle
         const progressiveModeToggle = document.getElementById('progressiveModeToggle');
         const progressiveMode = document.getElementById('progressiveMode');
