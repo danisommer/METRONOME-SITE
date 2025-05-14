@@ -129,8 +129,22 @@
                 </div>
             </div>
         </div>
-
-        <div class="flex justify-center space-x-4 mt-6">
+        
+        <!-- BPM History Section -->
+        <div class="mt-6 pt-4 border-t border-gray-200">
+            <div class="flex items-center justify-between mb-2">
+                <h2 class="text-lg font-medium text-gray-800">Session History</h2>
+                <button id="clearHistoryBtn" class="text-xs text-red-500 hover:text-red-700">
+                    Clear History
+                </button>
+            </div>
+            <div id="bpmHistory" class="space-y-2 max-h-40 overflow-y-auto">
+                <p class="text-sm text-gray-500 italic text-center">No previous sessions</p>
+            </div>
+        </div>
+        
+        <!-- Move control buttons inside the main container -->
+        <div class="flex justify-center space-x-4 mt-6 pt-4 border-t border-gray-200">
             <button id="startBtn" 
                 class="bg-blue-500 text-white px-6 py-2 rounded-full hover:bg-blue-600 transition-colors focus:outline-none focus:ring-2 focus:ring-blue-500 focus:ring-opacity-50">
                 Start
@@ -409,6 +423,118 @@
             }
         }
 
+        // BPM History Management
+        class BpmHistoryManager {
+            constructor() {
+                this.history = this.loadHistory();
+                this.historyContainer = document.getElementById('bpmHistory');
+                this.clearBtn = document.getElementById('clearHistoryBtn');
+                
+                // Set up event listeners
+                this.clearBtn.addEventListener('click', () => this.clearHistory());
+                
+                // Initial render
+                this.renderHistory();
+            }
+            
+            loadHistory() {
+                const savedHistory = localStorage.getItem('bpmHistory');
+                return savedHistory ? JSON.parse(savedHistory) : [];
+            }
+            
+            saveHistory() {
+                localStorage.setItem('bpmHistory', JSON.stringify(this.history));
+            }
+            
+            addSession(sessionData) {
+                // Add timestamp to the session data
+                sessionData.timestamp = new Date().toISOString();
+                
+                // Add to the beginning of the array (most recent first)
+                this.history.unshift(sessionData);
+                
+                // Keep only the last 10 sessions
+                if (this.history.length > 10) {
+                    this.history = this.history.slice(0, 10);
+                }
+                
+                this.saveHistory();
+                this.renderHistory();
+            }
+            
+            clearHistory() {
+                this.history = [];
+                this.saveHistory();
+                this.renderHistory();
+            }
+            
+            renderHistory() {
+                // Clear current history display
+                this.historyContainer.innerHTML = '';
+                
+                if (this.history.length === 0) {
+                    this.historyContainer.innerHTML = '<p class="text-sm text-gray-500 italic text-center">No previous sessions</p>';
+                    return;
+                }
+                
+                // Create elements for each history item
+                this.history.forEach((session, index) => {
+                    const date = new Date(session.timestamp);
+                    const formattedDate = `${date.toLocaleDateString()} ${date.toLocaleTimeString([], {hour: '2-digit', minute:'2-digit'})}`;
+                    
+                    const sessionEl = document.createElement('div');
+                    sessionEl.className = 'bg-gray-50 rounded p-2 text-sm';
+                    
+                    let detailsText = '';
+                    if (session.progressiveMode) {
+                        detailsText = `${session.startBpm}-${session.targetBpm} BPM, +${session.increment} every ${session.duration}s`;
+                    } else {
+                        detailsText = `${session.startBpm} BPM`;
+                    }
+                    
+                    sessionEl.innerHTML = `
+                        <div class="flex justify-between items-center">
+                            <span class="font-medium">${detailsText}</span>
+                            <span class="text-xs text-gray-500">${formattedDate}</span>
+                        </div>
+                        <div class="flex mt-1 space-x-2">
+                            <button class="text-xs bg-blue-100 text-blue-700 px-2 py-1 rounded hover:bg-blue-200 use-session-btn" 
+                                    data-index="${index}">Use</button>
+                            <span class="text-xs text-gray-600">${session.timeSignature}/4, vol:${session.volume}%</span>
+                        </div>
+                    `;
+                    
+                    // Add event listener to the Use button
+                    sessionEl.querySelector('.use-session-btn').addEventListener('click', () => {
+                        this.useSession(session);
+                    });
+                    
+                    this.historyContainer.appendChild(sessionEl);
+                });
+            }
+            
+            useSession(session) {
+                // Set form values from the session
+                document.getElementById('startBpm').value = session.startBpm;
+                document.getElementById('startBpmDisplay').textContent = session.startBpm;
+                
+                document.getElementById('targetBpm').value = session.targetBpm;
+                document.getElementById('targetBpmDisplay').textContent = session.targetBpm;
+                
+                document.getElementById('duration').value = session.duration;
+                document.getElementById('increment').value = session.increment;
+                document.getElementById('timeSignature').value = session.timeSignature;
+                
+                document.getElementById('volume').value = session.volume;
+                document.getElementById('volumeDisplay').textContent = `${session.volume}%`;
+                
+                // Set progressive mode and trigger the change event
+                const progressiveMode = document.getElementById('progressiveMode');
+                progressiveMode.checked = session.progressiveMode;
+                progressiveMode.dispatchEvent(new Event('change'));
+            }
+        }
+
         let metronome;
 
         document.getElementById('startBtn').addEventListener('click', () => {
@@ -499,6 +625,52 @@
                 el.classList.add('opacity-50', 'pointer-events-none');
             });
         });
+
+        // Initialize the history manager
+        const bpmHistory = new BpmHistoryManager();
+
+        // Modify the start button event listener to save session when metronome is created
+        document.getElementById('startBtn').onclick = function() {
+            // If metronome exists and is paused, resume it instead of creating a new one
+            if (metronome && metronome.isPaused) {
+                metronome.start(); // This will call resume() internally
+                return;
+            }
+            
+            // Create session data before starting
+            const sessionData = {
+                startBpm: parseInt(document.getElementById('startBpm').value),
+                targetBpm: parseInt(document.getElementById('targetBpm').value),
+                duration: parseInt(document.getElementById('duration').value),
+                increment: parseInt(document.getElementById('increment').value),
+                timeSignature: parseInt(document.getElementById('timeSignature').value),
+                volume: parseInt(document.getElementById('volume').value),
+                progressiveMode: document.getElementById('progressiveMode').checked
+            };
+            
+            // Add to history
+            bpmHistory.addSession(sessionData);
+            
+            // Create and start metronome (copied from original handler)
+            const startBpm = sessionData.startBpm;
+            const targetBpm = sessionData.targetBpm;
+            const duration = sessionData.duration;
+            const increment = sessionData.increment;
+            const timeSignature = sessionData.timeSignature;
+            const volume = sessionData.volume;
+            const progressiveMode = sessionData.progressiveMode;
+
+            // Dispose of any existing metronome before creating a new one
+            if (metronome) {
+                metronome.reset();
+            }
+            
+            metronome = new ProgressiveMetronome(startBpm, targetBpm, duration, increment, timeSignature, volume, progressiveMode);
+            
+            Tone.start().then(() => {
+                metronome.start();
+            });
+        };
     </script>
 </body>
 </html>
