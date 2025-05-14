@@ -56,6 +56,22 @@
         #progressiveMode:focus + div {
             box-shadow: 0 0 0 2px rgba(74, 144, 226, 0.5);
         }
+
+        .beat-bar {
+            width: 18px;        /* Increased from 12px */
+            height: 60px;       /* Increased from 40px */
+            background-color: #D1D5DB;
+            border-radius: 4px; /* Increased from 3px */
+            transition: background-color 0.1s ease-out;
+        }
+        
+        .beat-bar.active {
+            background-color: #4A90E2;
+        }
+        
+        .beat-bar.accent.active {
+            background-color: #EF4444;
+        }
     </style>
 </head>
 <body class="bg-gradient-to-br from-gray-100 to-gray-200 min-h-screen flex items-center justify-center p-4">
@@ -171,8 +187,8 @@
                 <span id="currentBpmLabel" class="font-medium text-blue-600">-</span>
                 <span id="maxBpmLabel">480</span>
             </div>
-            <div id="beatVisualizer" class="mt-4 flex justify-center">
-                <div id="beatIndicator" class="h-8 w-8 rounded-full bg-gray-300 transition-all duration-100"></div>
+            <div id="beatVisualizer" class="mt-4 flex justify-center space-x-3">
+                <!-- Bars will be generated dynamically based on time signature -->
             </div>
         </div>
     </div>
@@ -233,6 +249,14 @@
                 this.beatLoop = null;
                 this.bpmTimer = null;
                 this.nextBpmChange = null;
+
+                // Add this for beat visualization
+                this.beatVisualizer = document.getElementById('beatVisualizer');
+                this.currentBeatIndex = -1;
+                this.beatBars = [];
+                
+                // Initialize the beat bars
+                this.createBeatBars();
             }
             
             // Add a volume control method
@@ -271,10 +295,20 @@
                 Tone.Transport.bpm.value = this.currentBpm;
                 this.updateStatus(`Starting at ${this.currentBpm} BPM`);
                 
+                // Add this line after setting this.currentBeat = 0;
+                this.currentBeatIndex = -1;
+                this.createBeatBars(); // Recreate bars in case time signature changed
+
                 // Schedule the metronome beats
                 this.beatLoop = new Tone.Loop((time) => {
+                    // Calculate the beat index within the measure
+                    this.currentBeatIndex = this.currentBeat % this.timeSignature;
+                    
+                    // Update visual beat indicators
+                    this.updateBeatVisualization();
+                    
                     // Accent the first beat of each measure
-                    if (this.currentBeat % this.timeSignature === 0) {
+                    if (this.currentBeatIndex === 0) {
                         this.accentSynth.start(time);
                     } else {
                         this.regularSynth.start(time);
@@ -347,6 +381,11 @@
                 
                 this.startBtn.disabled = false;
                 this.pauseBtn.disabled = true;
+
+                // Add this before the method returns
+                if (this.beatBars) {
+                    this.beatBars.forEach(bar => bar.classList.remove('active'));
+                }
             }
 
             reset() {
@@ -368,6 +407,12 @@
                 this.resetBtn.disabled = true;
 
                 this.updateStatus('Metronome Reset');
+
+                // Add this before the method returns
+                if (this.beatBars) {
+                    this.beatBars.forEach(bar => bar.classList.remove('active'));
+                }
+                this.currentBeatIndex = -1;
             }
 
             stop() {
@@ -390,35 +435,48 @@
                 // Update visual BPM display
                 const bpmProgress = document.getElementById('bpmVisualProgress');
                 const currentBpmLabel = document.getElementById('currentBpmLabel');
-                const beatIndicator = document.getElementById('beatIndicator');
                 
                 // Update progress bar
                 const minBpm = parseInt(document.getElementById('startBpm').min);
                 const maxBpm = parseInt(document.getElementById('targetBpm').max);
-                const progressPercent = ((this.currentBpm - minBpm) / (maxBpm - minBpm)) *
-                100;
+                const progressPercent = ((this.currentBpm - minBpm) / (maxBpm - minBpm)) * 100;
                 bpmProgress.style.width = `${progressPercent}%`;
                 
                 // Update current BPM label
                 currentBpmLabel.textContent = `${this.currentBpm} BPM`;
                 
-                // Reset the beat indicator animation
-                if (this.isRunning && !this.isPaused) {
-                    // Calculate duration based on current BPM
-                    const beatDuration = 60 / this.currentBpm; // Duration of one beat in seconds
+                // The old animation code for beatIndicator can be removed
+            }
+
+            // Add this new method to create beat bars
+            createBeatBars() {
+                // Clear any existing beat bars
+                this.beatVisualizer.innerHTML = '';
+                this.beatBars = [];
+                
+                // Create as many bars as the time signature
+                for (let i = 0; i < this.timeSignature; i++) {
+                    const bar = document.createElement('div');
+                    bar.className = 'beat-bar';
                     
-                    // Remove previous animation
-                    beatIndicator.classList.remove('animate-beat');
-                    beatIndicator.style.animation = 'none';
+                    // Add accent class to the first beat
+                    if (i === 0) {
+                        bar.classList.add('accent');
+                    }
                     
-                    // Trigger reflow to reset animation
-                    void beatIndicator.offsetWidth;
-                    
-                    // Add dynamic animation
-                    beatIndicator.style.animation = `beat ${beatDuration}s infinite`;
-                } else {
-                    beatIndicator.style.animation = 'none';
-                    beatIndicator.style.backgroundColor = '#D1D5DB'; // Gray when not playing
+                    this.beatVisualizer.appendChild(bar);
+                    this.beatBars.push(bar);
+                }
+            }
+
+            // Add this new method for updating beat visualization
+            updateBeatVisualization() {
+                // Reset all bars
+                this.beatBars.forEach(bar => bar.classList.remove('active'));
+                
+                // Activate the current beat bar
+                if (this.currentBeatIndex >= 0 && this.currentBeatIndex < this.beatBars.length) {
+                    this.beatBars[this.currentBeatIndex].classList.add('active');
                 }
             }
         }
@@ -429,6 +487,7 @@
                 this.history = this.loadHistory();
                 this.historyContainer = document.getElementById('bpmHistory');
                 this.clearBtn = document.getElementById('clearHistoryBtn');
+                this.lastUsedSessionId = null; // Track the last used session
                 
                 // Set up event listeners
                 this.clearBtn.addEventListener('click', () => this.clearHistory());
@@ -447,6 +506,19 @@
             }
             
             addSession(sessionData) {
+                // Generate a unique ID for this session
+                sessionData.id = Date.now().toString();
+                
+                // Check if this is the same as the last used session
+                if (this.lastUsedSessionId !== null) {
+                    // If we're using a session we just loaded, don't add a duplicate
+                    if (this.isDuplicateOfExisting(sessionData)) {
+                        // Just reset the flag since we're starting the metronome
+                        this.lastUsedSessionId = null;
+                        return;
+                    }
+                }
+                
                 // Add timestamp to the session data
                 sessionData.timestamp = new Date().toISOString();
                 
@@ -460,6 +532,25 @@
                 
                 this.saveHistory();
                 this.renderHistory();
+                
+                // Reset the flag since we've added a new session
+                this.lastUsedSessionId = null;
+            }
+            
+            isDuplicateOfExisting(sessionData) {
+                // Find the session that was last used
+                const existingSession = this.history.find(session => session.id === this.lastUsedSessionId);
+                
+                if (!existingSession) return false;
+                
+                // Compare relevant properties
+                return existingSession.startBpm === sessionData.startBpm &&
+                       existingSession.targetBpm === sessionData.targetBpm &&
+                       existingSession.duration === sessionData.duration &&
+                       existingSession.increment === sessionData.increment &&
+                       existingSession.timeSignature === sessionData.timeSignature &&
+                       existingSession.volume === sessionData.volume &&
+                       existingSession.progressiveMode === sessionData.progressiveMode;
             }
             
             clearHistory() {
@@ -532,6 +623,9 @@
                 const progressiveMode = document.getElementById('progressiveMode');
                 progressiveMode.checked = session.progressiveMode;
                 progressiveMode.dispatchEvent(new Event('change'));
+                
+                // Set the flag to prevent duplicate entries
+                this.lastUsedSessionId = session.id;
             }
         }
 
@@ -671,6 +765,15 @@
                 metronome.start();
             });
         };
+
+        // Add this code after your other event listeners
+        document.getElementById('timeSignature').addEventListener('change', () => {
+            // If metronome exists, update its time signature and beat bars
+            if (metronome) {
+                metronome.timeSignature = parseInt(document.getElementById('timeSignature').value);
+                metronome.createBeatBars();
+            }
+        });
     </script>
 </body>
 </html>
