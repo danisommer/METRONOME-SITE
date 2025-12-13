@@ -57,6 +57,18 @@
             box-shadow: 0 0 0 2px rgba(74, 144, 226, 0.5);
         }
 
+        #accentFirstBeat:checked + div {
+            background-color: #4A90E2;
+        }
+        
+        #accentFirstBeat:checked + div + div {
+            transform: translateX(1.5rem);
+        }
+        
+        #accentFirstBeat:focus + div {
+            box-shadow: 0 0 0 2px rgba(74, 144, 226, 0.5);
+        }
+
         .beat-bar {
             width: 18px;        /* Increased from 12px */
             height: 60px;       /* Increased from 40px */
@@ -144,6 +156,15 @@
                     <div id="progressiveModeIndicator" class="absolute left-1 top-1 bg-white w-4 h-4 rounded-full transition-transform duration-200 ease-in-out transform"></div>
                 </div>
             </div>
+
+            <div class="flex items-center justify-between">
+                <label class="text-sm font-medium text-gray-700">Accent First Beat</label>
+                <div class="relative inline-block w-12 align-middle select-none cursor-pointer" id="accentFirstBeatToggle">
+                    <input type="checkbox" id="accentFirstBeat" class="sr-only" checked />
+                    <div class="block h-6 bg-gray-300 rounded-full w-12"></div>
+                    <div class="absolute left-1 top-1 bg-white w-4 h-4 rounded-full transition-transform duration-200 ease-in-out transform"></div>
+                </div>
+            </div>
         </div>
         
         <!-- BPM History Section -->
@@ -203,13 +224,14 @@
         });
 
         class ProgressiveMetronome {
-            constructor(startBpm, targetBpm, duration, increment, timeSignature, volume, progressiveMode) {
+            constructor(startBpm, targetBpm, duration, increment, timeSignature, volume, progressiveMode, accentFirstBeat) {
                 this.startBpm = startBpm;
                 this.targetBpm = targetBpm;
                 this.duration = duration;
                 this.increment = increment;
                 this.timeSignature = timeSignature;
                 this.progressiveMode = progressiveMode; // Novo parâmetro
+                this.accentFirstBeat = accentFirstBeat !== undefined ? accentFirstBeat : true;
                 
                 this.currentBpm = startBpm;
                 this.currentBeat = 0;
@@ -300,8 +322,8 @@
                     // Update visual beat indicators
                     this.updateBeatVisualization();
                     
-                    // Accent the first beat of each measure
-                    if (this.currentBeatIndex === 0) {
+                    // If accent mode is on, play accent on every beat; otherwise use the regular hit
+                    if (this.accentFirstBeat) {
                         this.accentSynth.start(time);
                     } else {
                         this.regularSynth.start(time);
@@ -437,8 +459,8 @@
                     const bar = document.createElement('div');
                     bar.className = 'beat-bar';
                     
-                    // Add accent class to the first beat
-                    if (i === 0) {
+                    // When accenting all beats, color all bars; otherwise keep neutral bars
+                    if (this.accentFirstBeat) {
                         bar.classList.add('accent');
                     }
                     
@@ -486,6 +508,7 @@
             addSession(sessionData) {
                 // Generate a unique ID for this session
                 sessionData.id = Date.now().toString();
+                sessionData.accentFirstBeat = sessionData.accentFirstBeat !== false;
                 
                 // Check if this is the same as the last used session
                 if (this.lastUsedSessionId !== null) {
@@ -522,13 +545,17 @@
                 if (!existingSession) return false;
                 
                 // Compare relevant properties
-                return existingSession.startBpm === sessionData.startBpm &&
-                       existingSession.targetBpm === sessionData.targetBpm &&
-                       existingSession.duration === sessionData.duration &&
-                       existingSession.increment === sessionData.increment &&
-                       existingSession.timeSignature === sessionData.timeSignature &&
-                       existingSession.volume === sessionData.volume &&
-                       existingSession.progressiveMode === sessionData.progressiveMode;
+                  const existingAccent = existingSession.accentFirstBeat !== false;
+                  const newAccent = sessionData.accentFirstBeat !== false;
+
+                  return existingSession.startBpm === sessionData.startBpm &&
+                      existingSession.targetBpm === sessionData.targetBpm &&
+                      existingSession.duration === sessionData.duration &&
+                      existingSession.increment === sessionData.increment &&
+                      existingSession.timeSignature === sessionData.timeSignature &&
+                      existingSession.volume === sessionData.volume &&
+                      existingSession.progressiveMode === sessionData.progressiveMode &&
+                      existingAccent === newAccent;
             }
             
             clearHistory() {
@@ -561,6 +588,8 @@
                         detailsText = `${session.startBpm} BPM`;
                     }
                     
+                    const accentEnabled = session.accentFirstBeat !== false;
+
                     sessionEl.innerHTML = `
                         <div class="flex justify-between items-center">
                             <span class="font-medium">${detailsText}</span>
@@ -569,7 +598,7 @@
                         <div class="flex mt-1 space-x-2">
                             <button class="text-xs bg-blue-100 text-blue-700 px-2 py-1 rounded hover:bg-blue-200 use-session-btn" 
                                     data-index="${index}">Use</button>
-                            <span class="text-xs text-gray-600">${session.timeSignature}/4, vol:${session.volume}%</span>
+                            <span class="text-xs text-gray-600">${session.timeSignature}/4, vol:${session.volume}%${accentEnabled ? ', snare all' : ', kick all'}</span>
                         </div>
                     `;
                     
@@ -601,6 +630,10 @@
                 const progressiveMode = document.getElementById('progressiveMode');
                 progressiveMode.checked = session.progressiveMode;
                 progressiveMode.dispatchEvent(new Event('change'));
+
+                const accentToggle = document.getElementById('accentFirstBeat');
+                accentToggle.checked = session.accentFirstBeat !== false;
+                accentToggle.dispatchEvent(new Event('change'));
                 
                 // Set the flag to prevent duplicate entries
                 this.lastUsedSessionId = session.id;
@@ -624,13 +657,14 @@
             const timeSignature = parseInt(document.getElementById('timeSignature').value);
             const volume = parseInt(document.getElementById('volume').value);
             const progressiveMode = document.getElementById('progressiveMode').checked;
+            const accentFirstBeat = document.getElementById('accentFirstBeat').checked;
 
             // Dispose of any existing metronome before creating a new one
             if (metronome) {
                 metronome.reset();
             }
             
-            metronome = new ProgressiveMetronome(startBpm, targetBpm, duration, increment, timeSignature, volume, progressiveMode);
+            metronome = new ProgressiveMetronome(startBpm, targetBpm, duration, increment, timeSignature, volume, progressiveMode, accentFirstBeat);
             
             Tone.start().then(() => {
                 metronome.start();
@@ -661,6 +695,8 @@
         // Adicione o event listener para o toggle
         const progressiveModeToggle = document.getElementById('progressiveModeToggle');
         const progressiveMode = document.getElementById('progressiveMode');
+        const accentFirstBeatToggle = document.getElementById('accentFirstBeatToggle');
+        const accentFirstBeat = document.getElementById('accentFirstBeat');
         
         progressiveModeToggle.addEventListener('click', function() {
             // Toggle the checkbox state
@@ -684,9 +720,22 @@
             }
         });
 
+        accentFirstBeatToggle.addEventListener('click', function() {
+            accentFirstBeat.checked = !accentFirstBeat.checked;
+            accentFirstBeat.dispatchEvent(new Event('change'));
+        });
+
+        accentFirstBeat.addEventListener('change', function() {
+            if (metronome) {
+                metronome.accentFirstBeat = accentFirstBeat.checked;
+                metronome.createBeatBars();
+            }
+        });
+
         // Inicializar o estado do toggle
         document.addEventListener('DOMContentLoaded', () => {
             progressiveMode.checked = false; // Desativado por padrão
+            accentFirstBeat.checked = true; // Destacar primeiro tempo por padrão
             
             // Aplicar estilo inicial aos campos progressivos
             document.querySelectorAll('.progressive-only').forEach(el => {
@@ -713,7 +762,8 @@
                 increment: parseInt(document.getElementById('increment').value),
                 timeSignature: parseInt(document.getElementById('timeSignature').value),
                 volume: parseInt(document.getElementById('volume').value),
-                progressiveMode: document.getElementById('progressiveMode').checked
+                progressiveMode: document.getElementById('progressiveMode').checked,
+                accentFirstBeat: document.getElementById('accentFirstBeat').checked
             };
             
             // Add to history
@@ -727,13 +777,14 @@
             const timeSignature = sessionData.timeSignature;
             const volume = sessionData.volume;
             const progressiveMode = sessionData.progressiveMode;
+            const accentFirstBeat = sessionData.accentFirstBeat;
 
             // Dispose of any existing metronome before creating a new one
             if (metronome) {
                 metronome.reset();
             }
             
-            metronome = new ProgressiveMetronome(startBpm, targetBpm, duration, increment, timeSignature, volume, progressiveMode);
+            metronome = new ProgressiveMetronome(startBpm, targetBpm, duration, increment, timeSignature, volume, progressiveMode, accentFirstBeat);
             
             Tone.start().then(() => {
                 metronome.start();
